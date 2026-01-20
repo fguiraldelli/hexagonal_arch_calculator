@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: hexagonal-calculator-api
+  
+  webflux:
+    base-path: /api
+
+server:
+  port: 8080
+
+logging:
+  level:
+    root: INFO
+    io.corp.calculator: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+  api-docs:
+    path: /api-docs

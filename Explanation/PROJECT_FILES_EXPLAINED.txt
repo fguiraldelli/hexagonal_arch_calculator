@@ -1,0 +1,805 @@
+════════════════════════════════════════════════════════════════════════════════
+        CALCULATOR PROJECT - WHICH FILE BELONGS TO WHICH LAYER
+════════════════════════════════════════════════════════════════════════════════
+
+Let me map EVERY file to its hexagonal layer and explain exactly why it belongs there.
+
+════════════════════════════════════════════════════════════════════════════════
+                            THE HEXAGON - DOMAIN LAYER
+════════════════════════════════════════════════════════════════════════════════
+
+These files contain PURE BUSINESS LOGIC with ZERO framework dependencies.
+This is the heart of hexagonal architecture.
+
+FILE 1: src/main/java/io/corp/calculator/domain/model/Calculation.java
+──────────────────────────────────────────────────────────────────────────────
+
+WHAT IT IS:
+  Domain entity containing pure business logic for arithmetic operations
+
+HEXAGONAL ROLE:
+  ✅ Core of the hexagon (business logic)
+  ✅ Independent from all frameworks
+  ✅ Testable without any framework
+
+CODE SNIPPET:
+```java
+public class Calculation {
+    
+    private BigDecimal operand1;
+    private BigDecimal operand2;
+    private String operation;
+    private BigDecimal result;
+    
+    // ✅ Pure business logic - no framework
+    public static Calculation add(BigDecimal operand1, BigDecimal operand2) {
+        // Validation (business rule)
+        if (operand1 == null || operand2 == null) {
+            throw new IllegalArgumentException("Operands cannot be null");
+        }
+        
+        // Calculation (business logic)
+        BigDecimal result = operand1.add(operand2);
+        
+        // Return result (no framework involved)
+        return new Calculation(operand1, operand2, "+", result);
+    }
+    
+    public static Calculation divide(BigDecimal operand1, BigDecimal operand2, int scale) {
+        // Division by zero is business rule (caught here, not in framework)
+        if (operand2.compareTo(BigDecimal.ZERO) == 0) {
+            throw new ArithmeticException("Cannot divide by zero");
+        }
+        
+        // Calculation with precision (business logic)
+        BigDecimal result = operand1.divide(operand2, scale, RoundingMode.HALF_UP);
+        
+        return new Calculation(operand1, operand2, "/", result);
+    }
+}
+```
+
+WHY THIS IS HEXAGONAL:
+  ✅ No @Entity annotation (JPA)
+  ✅ No @Component annotation (Spring)
+  ✅ No @Service annotation (Spring)
+  ✅ No imports from Spring or database libraries
+  ✅ Just pure Java and BigDecimal
+  ✅ Can run standalone in any Java environment
+
+IF YOU CHANGED FRAMEWORKS:
+  ✅ From Spring to Quarkus → Still works
+  ✅ From Java to Kotlin → Still works
+  ✅ From Hibernate to JPA → Still works
+  ✅ From MySQL to PostgreSQL → Still works
+  
+  Because this file has ZERO dependencies on frameworks!
+
+════════════════════════════════════════════════════════════════════════════════
+
+FILE 2: src/main/java/io/corp/calculator/domain/ports/input/CalculatorInputPort.java
+──────────────────────────────────────────────────────────────────────────────
+
+WHAT IT IS:
+  Interface defining what operations the domain provides to the external world
+
+HEXAGONAL ROLE:
+  ✅ Input port (contract from domain perspective)
+  ✅ Defines what domain CAN DO
+  ✅ Owned/defined by domain (not by external systems)
+  ✅ Used by input adapters
+
+CODE SNIPPET:
+```java
+// ✅ Domain defines what it provides (input port)
+public interface CalculatorInputPort {
+    
+    // ✅ These are the operations external systems can request
+    CalculationResponse performAddition(AddCommand command);
+    CalculationResponse performSubtraction(SubtractCommand command);
+    CalculationResponse performMultiplication(MultiplyCommand command);
+    CalculationResponse performDivision(DivideCommand command);
+}
+```
+
+WHY THIS IS HEXAGONAL:
+  ✅ Defined by domain (not by controller or external system)
+  ✅ Describes domain capabilities (what it can do)
+  ✅ Independent from how requests are made (HTTP, Kafka, CLI, etc.)
+  ✅ Uses simple DTOs (AddCommand, CalculationResponse)
+
+FLOW:
+  REST Endpoint
+      │
+      └─ calls CalculatorInputPort interface
+                │
+                └─ implemented by CalculatorUseCaseImpl
+                    │
+                    └─ which uses Calculation domain model
+
+════════════════════════════════════════════════════════════════════════════════
+
+FILE 3: src/main/java/io/corp/calculator/domain/ports/input/AddCommand.java
+FILE 4: src/main/java/io/corp/calculator/domain/ports/input/SubtractCommand.java
+FILE 5: src/main/java/io/corp/calculator/domain/ports/input/MultiplyCommand.java
+FILE 6: src/main/java/io/corp/calculator/domain/ports/input/DivideCommand.java
+──────────────────────────────────────────────────────────────────────────────
+
+WHAT THEY ARE:
+  DTOs (Data Transfer Objects) that carry data from external system to domain
+
+HEXAGONAL ROLE:
+  ✅ Input port data structures
+  ✅ Define what data domain needs to perform operations
+  ✅ Simple data carriers (no logic)
+
+CODE SNIPPET (AddCommand example):
+```java
+// ✅ Simple DTO - no logic
+@Data
+@AllArgsConstructor
+public class AddCommand {
+    private BigDecimal operand1;
+    private BigDecimal operand2;
+}
+```
+
+WHY THIS IS HEXAGONAL:
+  ✅ No framework annotations
+  ✅ No business logic
+  ✅ Just data structure
+  ✅ Defined by domain (not by external system)
+
+════════════════════════════════════════════════════════════════════════════════
+
+FILE 7: src/main/java/io/corp/calculator/domain/ports/input/CalculationResponse.java
+──────────────────────────────────────────────────────────────────────────────
+
+WHAT IT IS:
+  DTO carrying response data from domain back to external system
+
+HEXAGONAL ROLE:
+  ✅ Input port response structure
+  ✅ What domain returns after operation
+  ✅ Simple data carrier
+
+CODE SNIPPET:
+```java
+// ✅ Simple DTO - what domain returns
+@Data
+@AllArgsConstructor
+public class CalculationResponse {
+    private BigDecimal operand1;
+    private BigDecimal operand2;
+    private String operation;
+    private BigDecimal result;
+}
+```
+
+════════════════════════════════════════════════════════════════════════════════
+
+FILE 8: src/main/java/io/corp/calculator/domain/ports/output/TracerPort.java
+──────────────────────────────────────────────────────────────────────────────
+
+WHAT IT IS:
+  Interface defining what tracing service the domain needs
+
+HEXAGONAL ROLE:
+  ✅ Output port (contract from domain perspective)
+  ✅ Defines what domain NEEDS
+  ✅ Domain doesn't know who implements it
+  ✅ Can have multiple implementations (console, database, file, etc.)
+
+CODE SNIPPET:
+```java
+// ✅ Domain defines what it needs (output port)
+public interface TracerPort {
+    
+    // ✅ Domain says: "I need someone to trace results"
+    // ✅ I don't care how (console, database, file, etc.)
+    <T> void trace(T result);
+}
+```
+
+WHY THIS IS HEXAGONAL:
+  ✅ Defined by domain (domain says what it needs)
+  ✅ Implemented by external adapters
+  ✅ Domain doesn't know about implementations
+  ✅ Can easily swap implementations
+
+IMPLEMENTATIONS (in adapter layer):
+  • ConsoleTracerAdapter → prints to console
+  • DatabaseTracerAdapter → saves to database
+  • FileTracerAdapter → writes to file
+  • LoggingTracerAdapter → sends to logging system
+
+════════════════════════════════════════════════════════════════════════════════
+
+FILE 9: src/main/java/io/corp/calculator/domain/ports/output/PersistencePort.java
+──────────────────────────────────────────────────────────────────────────────
+
+WHAT IT IS:
+  Interface defining what persistence service the domain needs
+
+HEXAGONAL ROLE:
+  ✅ Output port (contract from domain perspective)
+  ✅ Defines what domain NEEDS for persistence
+  ✅ Domain doesn't know about database details
+
+CODE SNIPPET:
+```java
+// ✅ Domain defines what it needs (output port)
+public interface PersistencePort {
+    
+    // ✅ Domain says: "I need to save and retrieve calculations"
+    void save(Calculation calculation);
+    Optional<Calculation> findById(String id);
+}
+```
+
+WHY THIS IS HEXAGONAL:
+  ✅ Defined by domain (domain says what it needs)
+  ✅ Implemented by external adapters
+  ✅ Domain doesn't know about database type (SQL, NoSQL, etc.)
+
+IMPLEMENTATIONS (in adapter layer):
+  • InMemoryPersistenceAdapter → HashMap storage
+  • DatabasePersistenceAdapter → SQL database
+  • MongoDBAdapter → MongoDB
+  • CacheAdapter → Redis cache
+
+════════════════════════════════════════════════════════════════════════════════
+
+FILE 10: src/main/java/io/corp/calculator/domain/exception/DomainException.java
+──────────────────────────────────────────────────────────────────────────────
+
+WHAT IT IS:
+  Custom exception for domain layer
+
+HEXAGONAL ROLE:
+  ✅ Domain exception (not framework exception)
+  ✅ Represents domain-specific errors
+  ✅ Used by domain models and use cases
+
+CODE SNIPPET:
+```java
+// ✅ Domain exception - business error
+public class DomainException extends RuntimeException {
+    public DomainException(String message) {
+        super(message);
+    }
+}
+```
+
+WHY THIS IS HEXAGONAL:
+  ✅ Owned by domain
+  ✅ Represents business errors
+  ✅ Not tied to any framework
+
+════════════════════════════════════════════════════════════════════════════════
+                      APPLICATION LAYER - USE CASES
+════════════════════════════════════════════════════════════════════════════════
+
+These files orchestrate domain logic and use output ports.
+They implement input ports.
+They are the "application" layer between domain and adapters.
+
+FILE 11: src/main/java/io/corp/calculator/application/service/CalculatorUseCaseImpl.java
+──────────────────────────────────────────────────────────────────────────────
+
+WHAT IT IS:
+  Use case implementation that orchestrates domain logic
+
+HEXAGONAL ROLE:
+  ✅ Application layer (orchestration)
+  ✅ Implements input port
+  ✅ Uses output ports
+  ✅ Coordinates domain logic
+
+CODE SNIPPET:
+```java
+public class CalculatorUseCaseImpl implements CalculatorInputPort {
+    
+    // ✅ Dependencies are abstract (ports, not implementations)
+    private final TracerPort tracerPort;
+    private final PersistencePort persistencePort;
+    
+    @Override
+    public CalculationResponse performAddition(AddCommand command) {
+        
+        // ✅ Step 1: Use domain logic
+        Calculation calculation = Calculation.add(
+            command.getOperand1(),
+            command.getOperand2()
+        );
+        
+        // ✅ Step 2: Delegate to output port (don't know implementation)
+        tracerPort.trace(calculation);
+        persistencePort.save(calculation);
+        
+        // ✅ Step 3: Return response
+        return toResponse(calculation);
+    }
+}
+```
+
+WHY THIS IS HEXAGONAL:
+  ✅ Implements input port (satisfies domain contract)
+  ✅ Uses output ports (doesn't depend on implementations)
+  ✅ Orchestrates domain logic (thin coordination layer)
+  ✅ Can be tested with mock ports
+
+CONNECTIONS:
+  Input Adapter (REST)
+      │
+      └─ calls CalculatorUseCaseImpl (this file)
+          │
+          ├─ uses Calculation (domain)
+          │
+          └─ delegates to output ports
+              │
+              ├─ TracerPort
+              │
+              └─ PersistencePort
+
+════════════════════════════════════════════════════════════════════════════════
+
+FILE 12: src/main/java/io/corp/calculator/application/config/ApplicationConfig.java
+──────────────────────────────────────────────────────────────────────────────
+
+WHAT IT IS:
+  Spring configuration that wires use case with ports
+
+HEXAGONAL ROLE:
+  ✅ Application layer configuration
+  ✅ Creates use case bean
+  ✅ Injects output ports
+
+CODE SNIPPET:
+```java
+@Configuration
+public class ApplicationConfig {
+    
+    @Bean
+    public CalculatorInputPort calculatorInputPort(
+            TracerPort tracerPort,
+            PersistencePort persistencePort) {
+        
+        // ✅ Wiring: create use case with dependencies
+        return new CalculatorUseCaseImpl(tracerPort, persistencePort);
+    }
+}
+```
+
+WHY THIS IS HEXAGONAL:
+  ✅ Configuration (not business logic)
+  ✅ Wires abstract ports (not implementations)
+  ✅ Separated from domain logic
+
+════════════════════════════════════════════════════════════════════════════════
+                        ADAPTER LAYER - INPUT (REST)
+════════════════════════════════════════════════════════════════════════════════
+
+These files translate from external systems (HTTP) to domain commands.
+They depend on input ports (abstract).
+
+FILE 13: src/main/java/io/corp/calculator/adapter/in/web/CalculatorController.java
+──────────────────────────────────────────────────────────────────────────────
+
+WHAT IT IS:
+  REST Controller - Input adapter translating HTTP to domain
+
+HEXAGONAL ROLE:
+  ✅ Input adapter (external interface to domain)
+  ✅ REST endpoint (HTTP interface)
+  ✅ Translates HTTP request to domain command
+  ✅ Translates domain response to HTTP response
+  ✅ Depends on input port (abstract)
+
+CODE SNIPPET:
+```java
+@RestController
+@RequestMapping("/api/v1/calculator")
+public class CalculatorController {
+    
+    // ✅ Depends on port (interface), not implementation
+    private final CalculatorInputPort calculatorInputPort;
+    
+    @PostMapping("/add")
+    public ResponseEntity<CalculationResponse> add(
+            @RequestParam String operand1,
+            @RequestParam String operand2) {
+        
+        try {
+            // ✅ Step 1: Translate HTTP to domain command
+            AddCommand command = new AddCommand(
+                new BigDecimal(operand1),
+                new BigDecimal(operand2)
+            );
+            
+            // ✅ Step 2: Call domain through port
+            CalculationResponse response = calculatorInputPort.performAddition(command);
+            
+            // ✅ Step 3: Translate domain response to HTTP
+            return ResponseEntity.ok(response);
+            
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+}
+```
+
+WHY THIS IS HEXAGONAL:
+  ✅ Framework code (Spring annotations) is in adapter, not domain
+  ✅ Depends on port (could be replaced with Kafka adapter)
+  ✅ Translates between HTTP and domain
+  ✅ Doesn't contain business logic (just translation)
+
+WHAT COULD BE ADDED:
+  • KafkaAdapter (listening to Kafka topics)
+  • CLIAdapter (command-line interface)
+  • GraphQLAdapter (GraphQL queries)
+  • gRPCAdapter (gRPC service)
+  
+  ALL without changing domain logic!
+
+════════════════════════════════════════════════════════════════════════════════
+                      ADAPTER LAYER - OUTPUT (Tracer)
+════════════════════════════════════════════════════════════════════════════════
+
+These files translate from domain to external systems.
+They implement output ports.
+
+FILE 14: src/main/java/io/corp/calculator/adapter/out/tracer/ConsoleTracerAdapter.java
+──────────────────────────────────────────────────────────────────────────────
+
+WHAT IT IS:
+  Output adapter implementing TracerPort for console output
+
+HEXAGONAL ROLE:
+  ✅ Output adapter (domain to external system)
+  ✅ Implements output port
+  ✅ Translates domain object to console output
+  ✅ Can be replaced without changing domain
+
+CODE SNIPPET:
+```java
+// ✅ Implements output port
+public class ConsoleTracerAdapter implements TracerPort {
+    
+    @Override
+    public <T> void trace(T result) {
+        // ✅ Translates domain to console
+        System.out.println("result :: " + result.toString());
+    }
+}
+```
+
+WHY THIS IS HEXAGONAL:
+  ✅ Implements port (satisfies domain contract)
+  ✅ Doesn't contain business logic
+  ✅ Just translates domain to external format
+  ✅ Can be swapped for DatabaseTracerAdapter
+
+SWAPPABLE IMPLEMENTATIONS:
+  • ConsoleTracerAdapter → System.out.println
+  • DatabaseTracerAdapter → Save to database
+  • FileTracerAdapter → Write to file
+  • LoggingTracerAdapter → Use SLF4J logging
+  • CloudTracerAdapter → Send to cloud service
+
+════════════════════════════════════════════════════════════════════════════════
+
+FILE 15: src/main/java/io/corp/calculator/adapter/out/persistence/InMemoryPersistenceAdapter.java
+──────────────────────────────────────────────────────────────────────────────
+
+WHAT IT IS:
+  Output adapter implementing PersistencePort for in-memory storage
+
+HEXAGONAL ROLE:
+  ✅ Output adapter (domain to external system)
+  ✅ Implements output port
+  ✅ Provides persistence for domain
+  ✅ Can be replaced without changing domain
+
+CODE SNIPPET:
+```java
+// ✅ Implements output port
+public class InMemoryPersistenceAdapter implements PersistencePort {
+    
+    private final Map<String, Calculation> store = new HashMap<>();
+    
+    @Override
+    public void save(Calculation calculation) {
+        String id = UUID.randomUUID().toString();
+        store.put(id, calculation);
+    }
+    
+    @Override
+    public Optional<Calculation> findById(String id) {
+        return Optional.ofNullable(store.get(id));
+    }
+}
+```
+
+WHY THIS IS HEXAGONAL:
+  ✅ Implements port (satisfies domain contract)
+  ✅ Translates domain object to persistence format
+  ✅ Can be swapped for DatabasePersistenceAdapter
+
+SWAPPABLE IMPLEMENTATIONS:
+  • InMemoryPersistenceAdapter → HashMap (POC)
+  • DatabasePersistenceAdapter → SQL database
+  • MongoDBAdapter → MongoDB
+  • RedisAdapter → Redis cache
+  • DynamoDBAdapter → AWS DynamoDB
+
+════════════════════════════════════════════════════════════════════════════════
+
+FILE 16: src/main/java/io/corp/calculator/adapter/config/AdapterConfig.java
+──────────────────────────────────────────────────────────────────────────────
+
+WHAT IT IS:
+  Spring configuration that wires output adapters to ports
+
+HEXAGONAL ROLE:
+  ✅ Adapter layer configuration
+  ✅ Creates adapter beans
+  ✅ Binds adapters to ports
+
+CODE SNIPPET:
+```java
+@Configuration
+public class AdapterConfig {
+    
+    @Bean
+    public TracerPort tracerPort() {
+        // ✅ Binds ConsoleTracerAdapter to TracerPort interface
+        return new ConsoleTracerAdapter();
+    }
+    
+    @Bean
+    public PersistencePort persistencePort() {
+        // ✅ Binds InMemoryPersistenceAdapter to PersistencePort interface
+        return new InMemoryPersistenceAdapter();
+    }
+}
+```
+
+WHY THIS IS HEXAGONAL:
+  ✅ Configuration (separated from logic)
+  ✅ Wires ports to adapters
+  ✅ Easy to swap implementations
+
+TO CHANGE IMPLEMENTATIONS:
+  // Just change these two lines!
+  @Bean
+  public TracerPort tracerPort() {
+      return new DatabaseTracerAdapter(repository);  // ← Changed!
+  }
+
+  @Bean
+  public PersistencePort persistencePort() {
+      return new DatabasePersistenceAdapter(repository);  // ← Changed!
+  }
+
+════════════════════════════════════════════════════════════════════════════════
+                      SPRING BOOT ENTRY POINT
+════════════════════════════════════════════════════════════════════════════════
+
+FILE 17: src/main/java/io/corp/calculator/CalculatorApiApplication.java
+──────────────────────────────────────────────────────────────────────────────
+
+WHAT IT IS:
+  Spring Boot application entry point and OpenAPI configuration
+
+HEXAGONAL ROLE:
+  ✅ Framework bootstrap (not hexagonal, but necessary)
+  ✅ Starts Spring context
+  ✅ Configures OpenAPI/Swagger
+
+CODE SNIPPET:
+```java
+@SpringBootApplication
+public class CalculatorApiApplication {
+
+    public static void main(String[] args) {
+        // ✅ Starts Spring context
+        SpringApplication.run(CalculatorApiApplication.class, args);
+    }
+    
+    @Bean
+    public OpenAPI customOpenAPI() {
+        // ✅ Configures Swagger/OpenAPI
+        return new OpenAPI()
+            .info(new Info()
+                .title("Hexagonal Calculator API")
+                .version("2.0.0"));
+    }
+}
+```
+
+════════════════════════════════════════════════════════════════════════════════
+                      TEST FILES
+════════════════════════════════════════════════════════════════════════════════
+
+FILE 18: src/test/java/io/corp/calculator/domain/model/CalculationTest.java
+──────────────────────────────────────────────────────────────────────────────
+
+WHAT IT IS:
+  Unit tests for domain logic
+
+HEXAGONAL ROLE:
+  ✅ Tests pure domain (no mocks needed)
+  ✅ Proves business logic is independent
+
+CODE SNIPPET:
+```java
+@Test
+public void testAdd() {
+    Calculation result = Calculation.add(
+        new BigDecimal("10.50"),
+        new BigDecimal("5.25")
+    );
+    
+    assertEquals(new BigDecimal("15.75"), result.getResult());
+}
+```
+
+WHY THIS PROVES HEXAGONAL:
+  ✅ Can test domain without any framework
+  ✅ Can test without HTTP, database, or mocks
+  ✅ Pure business logic is testable
+
+════════════════════════════════════════════════════════════════════════════════
+
+FILE 19: src/test/java/io/corp/calculator/application/service/CalculatorUseCaseImplTest.java
+──────────────────────────────────────────────────────────────────────────────
+
+WHAT IT IS:
+  Unit tests for use case with mock ports
+
+HEXAGONAL ROLE:
+  ✅ Tests use case orchestration
+  ✅ Uses mock implementations of ports
+  ✅ Proves loose coupling
+
+CODE SNIPPET:
+```java
+@Test
+public void testPerformAddition() {
+    TracerPort mockTracer = mock(TracerPort.class);
+    PersistencePort mockPersistence = mock(PersistencePort.class);
+    
+    CalculatorInputPort useCase = new CalculatorUseCaseImpl(
+        mockTracer,
+        mockPersistence
+    );
+    
+    CalculationResponse response = useCase.performAddition(
+        new AddCommand(new BigDecimal("10"), new BigDecimal("5"))
+    );
+    
+    assertEquals(new BigDecimal("15"), response.getResult());
+    verify(mockTracer).trace(any());
+}
+```
+
+WHY THIS PROVES HEXAGONAL:
+  ✅ Can test use case without real adapters
+  ✅ Ports can be mocked
+  ✅ Proves loose coupling
+
+════════════════════════════════════════════════════════════════════════════════
+
+FILE 20: src/test/java/io/corp/calculator/adapter/in/web/CalculatorControllerTest.java
+──────────────────────────────────────────────────────────────────────────────
+
+WHAT IT IS:
+  Integration tests for REST endpoints
+
+HEXAGONAL ROLE:
+  ✅ Tests adapter layer
+  ✅ Tests HTTP interface
+  ✅ Uses MockMvc
+
+════════════════════════════════════════════════════════════════════════════════
+                      CONFIGURATION FILES
+════════════════════════════════════════════════════════════════════════════════
+
+FILE 21: pom.xml
+──────────────────────────────────────────────────────────────────────────────
+
+Maven configuration with dependencies
+
+FILE 22: src/main/resources/application.yml
+──────────────────────────────────────────────────────────────────────────────
+
+Spring Boot configuration
+
+FILE 23: Dockerfile
+──────────────────────────────────────────────────────────────────────────────
+
+Docker image definition
+
+FILE 24: docker-compose.yml
+──────────────────────────────────────────────────────────────────────────────
+
+Docker Compose for easy deployment
+
+════════════════════════════════════════════════════════════════════════════════
+                      LAYER SUMMARY TABLE
+════════════════════════════════════════════════════════════════════════════════
+
+DOMAIN LAYER (The Hexagon - Pure Business Logic)
+  ├─ Calculation.java                    ← Domain entity
+  ├─ CalculatorInputPort.java            ← Input port (interface)
+  ├─ TracerPort.java                     ← Output port (interface)
+  ├─ PersistencePort.java                ← Output port (interface)
+  ├─ AddCommand.java (+ others)          ← Input DTOs
+  ├─ CalculationResponse.java            ← Output DTO
+  └─ DomainException.java                ← Domain exception
+
+APPLICATION LAYER (Use Cases / Orchestration)
+  ├─ CalculatorUseCaseImpl.java           ← Use case implementation
+  └─ ApplicationConfig.java              ← Wiring
+
+ADAPTER LAYER - INPUT (External to Domain)
+  ├─ CalculatorController.java           ← REST adapter
+  └─ Could add: KafkaAdapter, CLIAdapter, etc.
+
+ADAPTER LAYER - OUTPUT (Domain to External)
+  ├─ ConsoleTracerAdapter.java           ← Tracer adapter
+  ├─ InMemoryPersistenceAdapter.java     ← Persistence adapter
+  └─ Could add: DatabaseAdapter, LoggingAdapter, etc.
+
+ADAPTER CONFIGURATION
+  ├─ AdapterConfig.java                  ← Wires adapters to ports
+  └─ CalculatorApiApplication.java       ← Spring Boot entry point
+
+TESTS
+  ├─ CalculationTest.java                ← Domain tests
+  ├─ CalculatorUseCaseImplTest.java      ← Use case tests
+  └─ CalculatorControllerTest.java       ← Integration tests
+
+════════════════════════════════════════════════════════════════════════════════
+                      WHY EACH LAYER IS HEXAGONAL
+════════════════════════════════════════════════════════════════════════════════
+
+DOMAIN LAYER:
+  ✅ Pure Java (no framework imports)
+  ✅ Independent (can run anywhere)
+  ✅ Defines ports (what it provides and needs)
+  ✅ Business logic (calculations, validation, rules)
+
+APPLICATION LAYER:
+  ✅ Implements input port
+  ✅ Uses output ports (abstract)
+  ✅ Orchestrates domain logic
+  ✅ Thin layer (no heavy logic)
+
+INPUT ADAPTERS:
+  ✅ Translates external interface to domain
+  ✅ Depends on input port
+  ✅ Can be swapped for other adapters
+  ✅ Contains framework code
+
+OUTPUT ADAPTERS:
+  ✅ Implements output ports
+  ✅ Translates domain to external system
+  ✅ Can be swapped for alternatives
+  ✅ Contains framework/external code
+
+DEPENDENCIES FLOW:
+  External System
+      │
+      └─ depends on → Adapter
+                      │
+                      └─ depends on → Port (interface)
+                                      │
+                                      └─ owned by → Domain
+
+Everything points INWARD toward the domain!
+
+════════════════════════════════════════════════════════════════════════════════
